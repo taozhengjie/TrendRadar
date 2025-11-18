@@ -28,7 +28,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           # TrendRadar 网页输出路径，默认就是 output
-          path: './output'
+          path: '.'
 
       - name: Deploy to GitHub Pages
         id: deployment
