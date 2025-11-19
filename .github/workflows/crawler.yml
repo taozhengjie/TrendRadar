@@ -72,8 +72,13 @@ jobs:
           git diff --quiet && git diff --staged --quiet || (git commit -m "Auto update by GitHub Actions at $(TZ=Asia/Shanghai date)" && git push)
       - name: Copy latest html to index.html
         run: |
-          latest_file=$(ls -t output/**/*.html | head -n 1)
+          set +e
+          latest_file=$(find output -type f -name "*.html" | sort -r | head -n 1)
           echo "Latest html file: $latest_file"
+          if [ -z "$latest_file" ]; then
+            echo "No html file found, skip updating index.html"
+            exit 0
+          fi
           cp "$latest_file" index.html
 
       - name: Commit updated index.html
