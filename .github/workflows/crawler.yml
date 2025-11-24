@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -26,78 +28,56 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Verify required files
-        run: |
-          echo "🔍 检查必需的配置文件..."
-          if [ ! -f config/config.yaml ]; then echo "❌ 缺少 config.yaml"; exit 1; fi
-          if [ ! -f config/frequency_words.txt ]; then echo "❌ 缺少 frequency_words.txt"; exit 1; fi
-          echo "✅ 配置文件检查通过"
-
       - name: Run crawler
         env:
-          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          DINGTALK_WEBHOOK_URL: ${{ secrets.DINGTALK_WEBHOOK_URL }}
-          WEWORK_WEBHOOK_URL: ${{ secrets.WEWORK_WEBHOOK_URL }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER }}
-          EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT }}
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          NTFY_SERVER_URL: ${{ secrets.NTFY_SERVER_URL }}
-          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
-          GITHUB_ACTIONS: true
         run: python main.py
+
+      # 防止 push 被拒绝：必须 pull --rebase
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
 
       - name: Commit crawler output
         run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          git add -A
-          git diff --quiet && git diff --staged --quiet || \
-            git commit -m "Auto update output at $(TZ=Asia/Shanghai date)" && git push
+          git add output
+          git commit -m "Auto update output at $(TZ=Asia/Shanghai date)" || echo "No changes."
 
+      # 复制最新 html 为 index.html
+        # 复制最新 html 为 index.html
       - name: Copy latest html to index.html
         run: |
           latest_file=$(find output -type f -name "*.html" | sort -r | head -n 1)
-          if [ -z "$latest_file" ]; then echo "❌ 没有 html 文件"; exit 0; fi
-          cp "$latest_file" index.html
-          echo "最新 index.html: $latest_file"
+          echo "Latest html file: $latest_file"
+          if [ -n "$latest_file" ]; then
+            cp "$latest_file" index.html
+          fi
 
-      - name: Commit updated index.html
+      - name: Commit index.html
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
           git add index.html
-          git commit -m "Auto update index.html" || echo "No changes"
+          git commit -m "Update index.html" || echo "No changes."
 
-      - name: Copy latest summary to root as latest.html
+      # 复制当日汇总为 latest.html
+      - name: Copy latest summary to latest.html
         run: |
-          latest_file=$(find output -type f -name "当日汇总.html" | sort -r | head -n 1)
-          echo "最新当日汇总: $latest_file"
-          if [ -z "$latest_file" ]; then echo "❌ 无当日汇总"; exit 0; fi
-          cp "$latest_file" latest.html
-          echo "已生成 latest.html"
+          latest_summary=$(find output -type f -name "当日汇总.html" | sort -r | head -n 1)
+          echo "Latest summary: $latest_summary"
+          if [ -n "$latest_summary" ]; then
+            cp "$latest_summary" latest.html
+          fi
 
       - name: Commit latest.html
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
           git add latest.html
-          git commit -m "Update latest.html" || echo "No changes"
+          git commit -m "Update latest.html" || echo "No changes."
 
-      - name: Push all changes
+      # 最后一次 push
+      - name: Push changes
         uses: ad-m/github-push-action@v0.8.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: master
-
-      - name: Trigger Pages Deployment
-        run: |
-          curl -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/pages.yml/dispatches \
-            -d '{"ref":"master"}'
