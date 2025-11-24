@@ -104,3 +104,30 @@ jobs:
           -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           https://api.github.com/repos/${{ github.repository }}/actions/workflows/pages.yml/dispatches \
           -d '{"ref":"master"}'
+             - name: Copy latest summary to root as latest.html
+        run: |
+          echo "🔍 查找最新当日汇总..."
+          latest_file=$(find output -type f -name "当日汇总.html" | sort -r | head -n 1)
+          echo "最新的当日汇总文件: $latest_file"
+
+          if [ -z "$latest_file" ]; then
+            echo "❌ 没有找到任何当日汇总.html"
+            exit 0
+          fi
+
+          cp "$latest_file" latest.html
+          echo "✅ 已复制为 latest.html"
+
+      - name: Commit latest.html
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add latest.html
+          git commit -m "Update latest.html from today's summary" || echo "No changes to commit"
+
+      - name: Push latest.html
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: master
+
