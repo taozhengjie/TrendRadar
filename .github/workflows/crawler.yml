@@ -3,14 +3,8 @@ name: Hot News Crawler
 on:
   schedule:
     - cron: "0 9-21/2 * * *"
-    # 我们使用的是 github 官方提供的资源来进行的推送，而每个账号的资源是限额的，为了不被官方判定为滥用而面临封号的风险，不建议比半小时更低
-    # 每天早上 9 点（北京时间）
-    #- cron: "05 1 * * *"
-    # 每天晚上 10 点（北京时间）
-    #- cron: "05 14 * * *" # 每小时整点运行一次(实际有偏差) 或者 "*/30 * * * *" (每半小时执行一次) 或者 "*/30 0-14 * * *"(每天早上 8 点到晚上 10 点期间，每半小时运行一次)
   workflow_dispatch:
 
-# 添加权限设置
 permissions:
   contents: write
 
@@ -35,19 +29,8 @@ jobs:
       - name: Verify required files
         run: |
           echo "🔍 检查必需的配置文件..."
-
-          if [ ! -f config/config.yaml ]; then
-            echo "❌ 错误: config/config.yaml 文件不存在"
-            echo "请参考项目文档创建配置文件"
-            exit 1
-          fi
-
-          if [ ! -f config/frequency_words.txt ]; then
-            echo "❌ 错误: config/frequency_words.txt 文件不存在"
-            echo "请参考项目文档创建频率词配置文件"
-            exit 1
-          fi
-
+          if [ ! -f config/config.yaml ]; then echo "❌ 缺少 config.yaml"; exit 1; fi
+          if [ ! -f config/frequency_words.txt ]; then echo "❌ 缺少 frequency_words.txt"; exit 1; fi
           echo "✅ 配置文件检查通过"
 
       - name: Run crawler
@@ -68,66 +51,36 @@ jobs:
           GITHUB_ACTIONS: true
         run: python main.py
 
-      - name: Commit and push if changes
+      - name: Commit crawler output
         run: |
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
           git add -A
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto update by GitHub Actions at $(TZ=Asia/Shanghai date)" && git push)
+          git diff --quiet && git diff --staged --quiet || \
+            git commit -m "Auto update output at $(TZ=Asia/Shanghai date)" && git push
+
       - name: Copy latest html to index.html
         run: |
-          set +e
           latest_file=$(find output -type f -name "*.html" | sort -r | head -n 1)
-          echo "Latest html file: $latest_file"
-          if [ -z "$latest_file" ]; then
-            echo "No html file found, skip updating index.html"
-            exit 0
-          fi
+          if [ -z "$latest_file" ]; then echo "❌ 没有 html 文件"; exit 0; fi
           cp "$latest_file" index.html
+          echo "最新 index.html: $latest_file"
 
       - name: Commit updated index.html
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add index.html
-          git commit -m "Auto update index.html from latest report" || echo "No changes to commit"
+          git commit -m "Auto update index.html" || echo "No changes"
 
-      - name: Push changes
-        uses: ad-m/github-push-action@v0.8.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: master
-      - name: Trigger pages deployment
+      - name: Copy latest summary to root as latest.html
         run: |
-          curl -X POST \
-          -H "Accept: application/vnd.github+json" \
-          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          https://api.github.com/repos/${{ github.repository }}/actions/workflows/pages.yml/dispatches \
-          -d '{"ref":"master"}'
-             - name: Copy latest summary to root as latest.html
-        run: |
-          echo "🔍 查找最新当日汇总..."
           latest_file=$(find output -type f -name "当日汇总.html" | sort -r | head -n 1)
-          echo "最新的当日汇总文件: $latest_file"
-
-          if [ -z "$latest_file" ]; then
-            echo "❌ 没有找到任何当日汇总.html"
-            exit 0
-          fi
-
+          echo "最新当日汇总: $latest_file"
+          if [ -z "$latest_file" ]; then echo "❌ 无当日汇总"; exit 0; fi
           cp "$latest_file" latest.html
-          echo "✅ 已复制为 latest.html"
+          echo "已生成 latest.html"
 
       - name: Commit latest.html
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add latest.html
-          git commit -m "Update latest.html from today's summary" || echo "No changes to commit"
-
-      - name: Push latest.html
-        uses: ad-m/github-push-action@v0.8.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: master
-
+          git config --local user.email "gith
