@@ -2,7 +2,7 @@ name: Hot News Crawler
 
 on:
   schedule:
-    - cron: "0 9-21/2 * * *"
+    - cron: "0 9-21/2 * * *"   # 每天 9 点到 21 点每 2 小时执行
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          fetch-depth: 0   # 允许我们一次性 push
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -28,56 +28,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Verify required files
+        run: |
+          if [ ! -f config/config.yaml ]; then
+            echo "❌ config.yaml 不存在"; exit 1; fi
+          if [ ! -f config/frequency_words.txt ]; then
+            echo "❌ frequency_words.txt 不存在"; exit 1; fi
+
       - name: Run crawler
         env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python main.py
-
-      # 防止 push 被拒绝：必须 pull --rebase
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase
-
-      - name: Commit crawler output
-        run: |
-          git add output
-          git commit -m "Auto update output at $(TZ=Asia/Shanghai date)" || echo "No changes."
-
-      # 复制最新 html 为 index.html
-        # 复制最新 html 为 index.html
-      - name: Copy latest html to index.html
-        run: |
-          latest_file=$(find output -type f -name "*.html" | sort -r | head -n 1)
-          echo "Latest html file: $latest_file"
-          if [ -n "$latest_file" ]; then
-            cp "$latest_file" index.html
-          fi
-
-      - name: Commit index.html
-        run: |
-          git add index.html
-          git commit -m "Update index.html" || echo "No changes."
-
-      # 复制当日汇总为 latest.html
-      - name: Copy latest summary to latest.html
-        run: |
-          latest_summary=$(find output -type f -name "当日汇总.html" | sort -r | head -n 1)
-          echo "Latest summary: $latest_summary"
-          if [ -n "$latest_summary" ]; then
-            cp "$latest_summary" latest.html
-          fi
-
-      - name: Commit latest.html
-        run: |
-          git add latest.html
-          git commit -m "Update latest.html" || echo "No changes."
-
-      # 最后一次 push
-      - name: Push changes
-        uses: ad-m/github-push-action@v0.8.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: master
+          DINGTALK_WEBHOOK_URL: ${{ secrets.DINGTALK_WEBHOOK_URL }}
+          WEWORK_WEBHOOK_URL: ${{ secrets.WEWORK_WEBHOOK_URL }}
+          EMAIL_FROM: ${{ secrets.EMAIL_F
