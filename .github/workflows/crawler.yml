@@ -2,7 +2,7 @@ name: Hot News Crawler
 
 on:
   schedule:
-    - cron: "0 9-21/2 * * *"
+    - cron: "0 9,22 * * *"   # 每天 9 点、22 点（北京时间）
   workflow_dispatch:
 
 permissions:
@@ -15,9 +15,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-          ref: master     # ⭐ 强制同步远程最新 master
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -26,31 +23,59 @@ jobs:
 
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Verify required files
+        run: |
+          if [ ! -f config/config.yaml ]; then echo "缺少 config.yaml"; exit 1; fi
+          if [ ! -f config/frequency_words.txt ]; then echo "缺少 frequency_words.txt"; exit 1; fi
+          echo "配置文件检查通过"
 
       - name: Run crawler
         env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DINGTALK_WEBHOOK_URL: ${{ secrets.DINGTALK_WEBHOOK_URL }}
+          WEWORK_WEBHOOK_URL: ${{ secrets.WEWORK_WEBHOOK_URL }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER }}
+          EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_SERVER_URL: ${{ secrets.NTFY_SERVER_URL }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
           GITHUB_ACTIONS: true
         run: python main.py
 
-      - name: Update index.html
+      - name: Move output to docs/output
         run: |
-          latest_html=$(find output -type f -name "*.html" | sort -r | head -n 1)
-          cp "$latest_html" index.html
+          mkdir -p docs/output
+          cp -r output/* docs/output/
+          echo "已同步 output 到 docs/output"
 
-      - name: Update latest.html
+      - name: Prepare updated homepage & latest
         run: |
-          latest_summary=$(find output -type f -name "当日汇总.html" | sort -r | head -n 1)
-          cp "$latest_summary" latest.html
+          echo "查找最新 HTML..."
+          latest_html=$(find docs/output -type f -name "*.html" | sort -r | head -n 1)
+          latest_daily=$(find docs/output -type f -name "当日汇总.html" | sort -r | head -n 1)
 
-      - name: Commit all changes together
+          echo "最新 HTML: $latest_html"
+          echo "最新当日汇总: $latest_daily"
+
+          if [ -n "$latest_html" ]; then cp "$latest_html" docs/index.html; fi
+          if [ -n "$latest_daily" ]; then cp "$latest_daily" docs/latest.html; fi
+
+      - name: Single commit (all changes)
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.html latest.html
-          git commit -m "Update pages" || echo "No changes"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add docs index.html latest.html || true
+          git commit -m "Auto update output, index.html & latest.html" || echo "没有更新内容"
 
-      - name: Push once
+      - name: Push once to master
         uses: ad-m/github-push-action@v0.8.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
