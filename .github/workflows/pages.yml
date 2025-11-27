@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: "repo-lock"
   cancel-in-progress: true
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # TrendRadar 网页输出路径，默认就是 output
+          # 部署整个仓库（包括 index.html、latest.html，以及 output）
           path: '.'
 
       - name: Deploy to GitHub Pages
