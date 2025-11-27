@@ -2,11 +2,15 @@ name: Hot News Crawler
 
 on:
   schedule:
-    - cron: "0 9,22 * * *"   # 每天 9 点、22 点（北京时间）
+    - cron: "0 9-21/2 * * *"   # 每日 9 点~21 点每 2 小时执行一次（北京时间）
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: "repo-lock"
+  cancel-in-progress: true
 
 jobs:
   crawl:
@@ -26,12 +30,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Verify required files
-        run: |
-          if [ ! -f config/config.yaml ]; then echo "缺少 config.yaml"; exit 1; fi
-          if [ ! -f config/frequency_words.txt ]; then echo "缺少 frequency_words.txt"; exit 1; fi
-          echo "配置文件检查通过"
-
       - name: Run crawler
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
@@ -50,32 +48,33 @@ jobs:
           GITHUB_ACTIONS: true
         run: python main.py
 
-      - name: Move output to docs/output
+      # ---- 生成 index.html ----
+      - name: Update index.html
         run: |
-          mkdir -p docs/output
-          cp -r output/* docs/output/
-          echo "已同步 output 到 docs/output"
+          latest_file=$(find output -type f -name "*.html" | sort -r | head -n 1)
+          echo "Latest html file: $latest_file"
+          if [ -n "$latest_file" ]; then
+            cp "$latest_file" index.html
+          fi
 
-      - name: Prepare updated homepage & latest
+      # ---- 复制当日汇总为 latest.html ----
+      - name: Update latest.html
         run: |
-          echo "查找最新 HTML..."
-          latest_html=$(find docs/output -type f -name "*.html" | sort -r | head -n 1)
-          latest_daily=$(find docs/output -type f -name "当日汇总.html" | sort -r | head -n 1)
+          latest_sum=$(find output -type f -name "当日汇总.html" | sort -r | head -n 1)
+          echo "Latest summary: $latest_sum"
+          if [ -n "$latest_sum" ]; then
+            cp "$latest_sum" latest.html
+          fi
 
-          echo "最新 HTML: $latest_html"
-          echo "最新当日汇总: $latest_daily"
-
-          if [ -n "$latest_html" ]; then cp "$latest_html" docs/index.html; fi
-          if [ -n "$latest_daily" ]; then cp "$latest_daily" docs/latest.html; fi
-
-      - name: Single commit (all changes)
+      # ---- 提交全部改动（一次性 push）----
+      - name: Commit changes
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add docs index.html latest.html || true
-          git commit -m "Auto update output, index.html & latest.html" || echo "没有更新内容"
+          git add -A
+          git commit -m "Auto update by GitHub Actions at $(TZ=Asia/Shanghai date)" || echo "No changes to commit"
 
-      - name: Push once to master
+      - name: Push changes (only one push)
         uses: ad-m/github-push-action@v0.8.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
